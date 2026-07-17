@@ -138,6 +138,11 @@ body{font-family:'Inter',sans-serif;min-height:100vh;display:flex;flex-direction
   .chip{font-size:10px;padding:6px 11px}
 }
 button:focus-visible,a:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+/* TOUCH RIPPLE */
+.rip{position:absolute;border-radius:50%;background:rgba(166,206,55,0.35);transform:scale(0);animation:ripGo 0.55s ease-out forwards;pointer-events:none}
+@keyframes ripGo{to{transform:scale(3);opacity:0}}
+.btn,.row,.switch button{position:relative;overflow:hidden}
+@media (prefers-reduced-motion: reduce){.rip{display:none}}
 </style>
 </head>
 <body>
@@ -191,7 +196,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--lime);outline-offse
       <div class="person">
         <div class="person-inner" id="person-inner">
           <div class="p-name" id="p-name">Yasin Qureshi</div>
-          <div class="p-role" id="p-role">Co-Founder</div>
+          <div class="p-role" id="p-role">Owner</div>
         </div>
       </div>
 
@@ -264,14 +269,14 @@ var p = new URLSearchParams(window.location.search);
 var founders = [
   {
     name:  p.get('name1')  || 'Yasin Qureshi',
-    role:  p.get('role1')  || 'Co-Founder',
+    role:  p.get('role1')  || 'Owner',
     phone: p.get('phone1') || '+91 63560 22747',
     email: p.get('email1') || '',
     first: p.get('first1') || 'Yasin'
   },
   {
     name:  p.get('name2')  || 'Yamin Qureshi',
-    role:  p.get('role2')  || 'Co-Founder',
+    role:  p.get('role2')  || 'Owner',
     phone: p.get('phone2') || '+91 97265 31963',
     email: p.get('email2') || '',
     first: p.get('first2') || 'Yamin'
@@ -306,6 +311,7 @@ function render(){
 
 function setPerson(i){
   current = i;
+  if(navigator.vibrate) navigator.vibrate(12);
   document.getElementById('switch').classList.toggle('p2', i===1);
   document.getElementById('tab1').classList.toggle('on', i===0);
   document.getElementById('tab2').classList.toggle('on', i===1);
@@ -330,7 +336,7 @@ render();
   box.innerHTML = html;
 })();
 
-/* 3D tilt — desktop pointer only, respects reduced motion */
+/* 3D tilt — mouse on desktop, GYROSCOPE on mobile */
 var card = document.getElementById('card');
 var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 if(!reduce && window.matchMedia('(pointer: fine)').matches){
@@ -342,6 +348,51 @@ if(!reduce && window.matchMedia('(pointer: fine)').matches){
     card.style.transform = 'rotateY(' + (x*6) + 'deg) rotateX(' + (-y*6) + 'deg)';
   });
   wrap.addEventListener('mouseleave', function(){ card.style.transform = 'rotateY(0) rotateX(0)'; });
+}
+
+/* Gyroscope tilt for mobile */
+var gyroOn = false;
+function startGyro(){
+  if(gyroOn || reduce) return;
+  gyroOn = true;
+  var baseBeta = null, baseGamma = null;
+  window.addEventListener('deviceorientation', function(e){
+    if(e.beta === null) return;
+    if(baseBeta === null){ baseBeta = e.beta; baseGamma = e.gamma; }
+    var dB = Math.max(-18, Math.min(18, e.beta - baseBeta));
+    var dG = Math.max(-18, Math.min(18, e.gamma - baseGamma));
+    card.style.transform = 'rotateX(' + (-dB*0.35) + 'deg) rotateY(' + (dG*0.35) + 'deg)';
+  });
+}
+if(!window.matchMedia('(pointer: fine)').matches && !reduce){
+  if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+    /* iOS needs a user gesture to grant motion access */
+    document.body.addEventListener('touchend', function askGyro(){
+      DeviceOrientationEvent.requestPermission().then(function(state){
+        if(state === 'granted') startGyro();
+      }).catch(function(){});
+      document.body.removeEventListener('touchend', askGyro);
+    }, {once:true});
+  } else {
+    startGyro(); /* Android */
+  }
+}
+
+/* Touch ripples on buttons and rows */
+if(!reduce){
+  document.querySelectorAll('.btn, .row, .switch button').forEach(function(el){
+    el.addEventListener('pointerdown', function(e){
+      var r = el.getBoundingClientRect();
+      var d = Math.max(r.width, r.height);
+      var s = document.createElement('span');
+      s.className = 'rip';
+      s.style.width = s.style.height = d + 'px';
+      s.style.left = (e.clientX - r.left - d/2) + 'px';
+      s.style.top = (e.clientY - r.top - d/2) + 'px';
+      el.appendChild(s);
+      setTimeout(function(){ s.remove(); }, 600);
+    });
+  });
 }
 
 function openPopup(){document.getElementById('contactPopup').classList.add('show');}
