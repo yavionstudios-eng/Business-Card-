@@ -35,6 +35,7 @@ body{font-family:'Inter',sans-serif;min-height:100vh;display:flex;flex-direction
 
 /* CARD */
 .card{border-radius:20px;overflow:hidden;background:#111;border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,0.6),0 0 0 1px rgba(166,206,55,0.06);transform-style:preserve-3d;transition:transform 0.18s ease-out;will-change:transform}
+@media (pointer: coarse){.card{transition:none}}
 
 /* LOGO PANEL */
 .logo-panel{background:var(--paper);padding:30px 28px 26px;position:relative;overflow:hidden}
@@ -350,31 +351,62 @@ if(!reduce && window.matchMedia('(pointer: fine)').matches){
   wrap.addEventListener('mouseleave', function(){ card.style.transform = 'rotateY(0) rotateX(0)'; });
 }
 
-/* Gyroscope tilt for mobile */
-var gyroOn = false;
+/* ═══ MOTION FLOAT — whole card glides with phone movement ═══ */
+var gyroOn = false, gotEvent = false;
+var tx=0, ty=0, rx=0, ry=0;        /* current */
+var Tx=0, Ty=0, Rx=0, Ry=0;        /* target  */
+
+function motionLoop(){
+  /* smooth glide toward target (inertia) */
+  tx += (Tx-tx)*0.08; ty += (Ty-ty)*0.08;
+  rx += (Rx-rx)*0.08; ry += (Ry-ry)*0.08;
+  card.style.transform = 'translate('+tx.toFixed(1)+'px,'+ty.toFixed(1)+'px) rotateX('+rx.toFixed(1)+'deg) rotateY('+ry.toFixed(1)+'deg)';
+  requestAnimationFrame(motionLoop);
+}
+
+function showMotionChip(){
+  var c = document.createElement('div');
+  c.textContent = '\u2726 Motion active';
+  c.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#A6CE37;color:#0C0C0C;font:700 11px Inter,sans-serif;padding:7px 16px;border-radius:99px;z-index:2000;letter-spacing:0.05em;box-shadow:0 6px 20px rgba(166,206,55,0.4);animation:cascade 0.4s ease both';
+  document.body.appendChild(c);
+  setTimeout(function(){ c.style.transition='opacity 0.5s'; c.style.opacity='0'; setTimeout(function(){c.remove();},500); }, 2200);
+}
+
 function startGyro(){
   if(gyroOn || reduce) return;
   gyroOn = true;
   var baseBeta = null, baseGamma = null;
   window.addEventListener('deviceorientation', function(e){
-    if(e.beta === null) return;
+    if(e.beta === null && e.gamma === null) return;
+    if(!gotEvent){ gotEvent = true; showMotionChip(); motionLoop(); }
     if(baseBeta === null){ baseBeta = e.beta; baseGamma = e.gamma; }
-    var dB = Math.max(-18, Math.min(18, e.beta - baseBeta));
-    var dG = Math.max(-18, Math.min(18, e.gamma - baseGamma));
-    card.style.transform = 'rotateX(' + (-dB*0.35) + 'deg) rotateY(' + (dG*0.35) + 'deg)';
+    /* delta from resting position, clamped */
+    var dB = Math.max(-30, Math.min(30, e.beta  - baseBeta));   /* front-back tilt */
+    var dG = Math.max(-30, Math.min(30, e.gamma - baseGamma));  /* left-right tilt */
+    /* WHOLE CARD moves across the screen + leans */
+    Tx = dG * 1.4;          /* up to ~42px sideways   */
+    Ty = dB * 1.1;          /* up to ~33px up/down    */
+    Ry = dG * 0.30;         /* lean with the move     */
+    Rx = -dB * 0.28;
+    /* slow re-center: drift the baseline so it always settles */
+    baseBeta += (e.beta - baseBeta) * 0.005;
+    baseGamma += (e.gamma - baseGamma) * 0.005;
   });
 }
+
 if(!window.matchMedia('(pointer: fine)').matches && !reduce){
+  if(location.protocol !== 'https:'){
+    console.warn('Motion sensors need HTTPS \u2014 open the live link, not a local file.');
+  }
   if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
-    /* iOS needs a user gesture to grant motion access */
-    document.body.addEventListener('touchend', function askGyro(){
+    /* iOS: needs a tap to grant motion access */
+    document.body.addEventListener('click', function askGyro(){
       DeviceOrientationEvent.requestPermission().then(function(state){
         if(state === 'granted') startGyro();
       }).catch(function(){});
-      document.body.removeEventListener('touchend', askGyro);
     }, {once:true});
   } else {
-    startGyro(); /* Android */
+    startGyro(); /* Android \u2014 starts immediately on HTTPS */
   }
 }
 
